@@ -208,8 +208,8 @@
 <div class="wrap">
   <h1>Cube Drawing</h1>
   <p class="desc">
-    화면에 주어진 정육면체의 한 면만 보고, 보이지 않는 나머지 모서리들을 그려 보세요.
-    <b>채점</b>하면 원래 정육면체의 투영 결과와 비교합니다.
+    화면에 주어진 정육면체의 한 면만 보고, 보이지 않는 나머지 모서리들을 그려 보세요[cite: 14].
+    <b>채점</b>하면 원래 정육면체의 투영 결과와 비교합니다[cite: 14].
   </p>
 
   <!-- 버튼, 그림판 전체를 묶어주는 래퍼 -->
@@ -273,13 +273,14 @@
   </div>
 
   <div class="hint">
-    왼쪽 드래그 = 그리기 · 오른쪽 드래그 = 임시 지우기 · 가운데(휠) 버튼 드래그 = 전체 이동.
-    <b>지우개</b>를 켜면 계속 지우개로 동작합니다.
-    <b>선분</b>을 켠 뒤 두 점을 차례로 클릭하면 두 점 사이에 직선 선분이 생성됩니다.
-    확대/축소는 그리는 중에도 가능하며, 마우스 위치를 중심으로 확대/축소됩니다.
-    방향키로 전체 장면을 이동할 수 있고, <b>Ctrl+Z</b> 또는 아래의 <b>되돌리기</b> 버튼으로 작업을 되돌릴 수 있습니다.
-    그림판 오른쪽 아래의 <b>그랩</b>을 드래그하면 그림판 전체 세로 크기를 조절할 수 있습니다.
-    Daromeon Cube Drawing을 따라 만듬
+    왼쪽 드래그 = 그리기 · 오른쪽 드래그 = 임시 지우기 · 가운데(휠) 버튼 드래그 = 전체 이동[cite: 14].
+    <b>핸드폰에서는 두 손가락으로 탭하고 움직여 확대·축소 및 이동(핀치 줌/패닝)</b>을 할 수 있습니다.
+    <b>지우개</b>를 켜면 계속 지우개로 동작합니다[cite: 14].
+    <b>선분</b>을 켠 뒤 두 점을 차례로 클릭하면 두 점 사이에 직선 선분이 생성됩니다[cite: 14].
+    확대/축소는 그리는 중에도 가능하며, 마우스 위치를 중심으로 확대/축소됩니다[cite: 14].
+    방향키로 전체 장면을 이동할 수 있고, <b>Ctrl+Z</b> 또는 아래의 <b>되돌리기</b> 버튼으로 작업을 되돌릴 수 있습니다[cite: 14].
+    그림판 오른쪽 아래의 <b>그랩</b>을 드래그하면 그림판 전체 세로 크기를 조절할 수 있습니다[cite: 14].
+    Daromeon Cube Drawing을 따라 만듬[cite: 14]
   </div>
 </div>
 
@@ -302,6 +303,13 @@ let activeStroke = null;
 let scored = false;
 let reveal = false;
 let currentPointerId = null;
+
+// Multi-touch active pointers for pinch zoom & two-finger pan
+let activePointers = new Map();
+let pinchStartDist = null;
+let pinchStartZoom = 1.0;
+let pinchStartPan = { x: 0, y: 0 };
+let pinchStartMid = { x: 0, y: 0 };
 
 // Undo history.
 let undoStack = [];
@@ -899,10 +907,28 @@ canvas.addEventListener("contextmenu", e => e.preventDefault());
 canvas.addEventListener("pointerdown", e => {
   if (scored && e.button !== 1) return;
 
+  const screenP = canvasPoint(e);
+  activePointers.set(e.pointerId, screenP);
+
+  // 두 손가락 이상 터치된 경우 핀치 줌 / 패닝 모드로 전환
+  if (activePointers.size === 2) {
+    inputMode = "pinch";
+    activeStroke = null;
+    segmentFirstPoint = null;
+    segmentHoverPoint = null;
+    const pts = Array.from(activePointers.values());
+    pinchStartDist = dist(pts[0], pts[1]);
+    pinchStartZoom = viewZoom;
+    pinchStartMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    pinchStartPan = { x: viewPan.x, y: viewPan.y };
+    canvas.classList.remove("pan-mode", "eraser");
+    return;
+  } else if (activePointers.size > 2) {
+    return;
+  }
+
   currentPointerId = e.pointerId;
   try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-
-  const screenP = canvasPoint(e);
 
   if (e.button === 1) {
     inputMode = "pan";
@@ -970,9 +996,31 @@ canvas.addEventListener("pointerdown", e => {
 });
 
 canvas.addEventListener("pointermove", e => {
-  if (currentPointerId !== e.pointerId) return;
-
+  if (!activePointers.has(e.pointerId)) return;
   const screenP = canvasPoint(e);
+  activePointers.set(e.pointerId, screenP);
+
+  // 두 손가락 핀치 줌 및 이동 처리
+  if (activePointers.size >= 2 && inputMode === "pinch") {
+    const pts = Array.from(activePointers.values());
+    const currentDist = dist(pts[0], pts[1]);
+    const currentMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+
+    if (pinchStartDist && pinchStartDist > 0) {
+      const zoomFactor = currentDist / pinchStartDist;
+      const nextZoom = clamp(pinchStartZoom * zoomFactor, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
+
+      const oldScenePoint = screenToScene(pinchStartMid);
+      viewZoom = nextZoom;
+      const after = sceneToScreen(oldScenePoint);
+      viewPan.x = pinchStartPan.x + (currentMid.x - pinchStartMid.x) + (pinchStartMid.x - after.x);
+      viewPan.y = pinchStartPan.y + (currentMid.y - pinchStartMid.y) + (pinchStartMid.y - after.y);
+      draw();
+    }
+    return;
+  }
+
+  if (currentPointerId !== e.pointerId) return;
 
   if (inputMode === "pan") {
     if (!panState) return;
@@ -1009,6 +1057,19 @@ canvas.addEventListener("pointermove", e => {
 });
 
 function finishPointer(e) {
+  activePointers.delete(e.pointerId);
+
+  if (inputMode === "pinch") {
+    if (activePointers.size === 1) {
+      // 손가락 하나가 남은 경우 그림이 오작동하지 않도록 대기 상태로 전환
+      inputMode = "none";
+    } else if (activePointers.size === 0) {
+      inputMode = eraserMode ? "erase" : "draw";
+      pinchStartDist = null;
+    }
+    return;
+  }
+
   if (currentPointerId !== e.pointerId) return;
 
   if (inputMode === "draw") {
