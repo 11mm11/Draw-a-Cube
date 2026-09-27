@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cube Drawing</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 18px;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 24px;
+  }
+  .desc {
+    margin: 0 0 14px;
+    color: #6b7280;
+    line-height: 1.5;
+  }
+  
+  /* 전체화면 적용을 위한 래퍼 컨테이너 */
+  .app-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+  .app-container:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    padding: 18px;
+    background: #f3f4f6;
+    overflow: hidden;
+  }
+  
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  button {
+    border: 0;
+    border-radius: 9px;
+    padding: 10px 14px;
+    background: #111827;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: #6b7280; }
+  button.danger { background: #b91c1c; }
+  button.active { background: #2563eb; }
+  
+  .canvas-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .canvas-controls button { min-width: 74px; }
+  canvas.pan-mode { cursor: grab; }
+  canvas.pan-mode:active { cursor: grabbing; }
+
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    margin-left: 10px;
+    cursor: pointer;
+    user-select: none;
+    color: #374151;
+    font-weight: 500;
+  }
+
+  /* 그림판 오른쪽 위로 띄워진 점수 UI */
+  .score-floating {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+    background: rgba(255,255,255,0.85);
+    padding: 6px 12px;
+    border-radius: 8px;
+    z-index: 10;
+    pointer-events: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+
+  .canvas-box {
+    position: relative;
+    width: 100%; /* 가로 폭 맞춤 */
+    height: min(760px, 64vh); 
+    min-width: 320px;
+    min-height: 260px;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.06);
+  }
+  
+  .app-container:fullscreen .canvas-box {
+    flex: 1 1 0;
+    height: auto !important; /* 리사이즈된 높이를 무시하고 전체화면 채움 */
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #fafafa;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  
+  .resize-grip {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 24px;
+    height: 24px;
+    cursor: ns-resize; /* 세로 조절용 커서 */
+    z-index: 20;
+    touch-action: none;
+    background:
+      linear-gradient(135deg, transparent 0 42%, #9ca3af 43% 48%, transparent 49% 100%),
+      linear-gradient(135deg, transparent 0 58%, #9ca3af 59% 64%, transparent 65% 100%),
+      linear-gradient(135deg, transparent 0 74%, #9ca3af 75% 80%, transparent 81% 100%);
+  }
+  .resize-grip:hover {
+    opacity: 0.75;
+  }
+  
+  /* 전체화면 진입 시 원래 핸들 위치에 뜨는 해제 버튼 */
+  .fs-exit-btn {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    z-index: 20;
+    background: #111827;
+    color: white;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-top-left-radius: 12px;
+    opacity: 0.8;
+  }
+  .fs-exit-btn:hover {
+    opacity: 1;
+  }
+  
+  /* 풀스크린 시의 버튼 교체 처리 */
+  .app-container:fullscreen .resize-grip { display: none; }
+  .app-container:fullscreen .fs-exit-btn { display: flex; }
+
+  canvas.eraser { cursor: cell; }
+  
+  .status {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .label {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 3px;
+  }
+  .value {
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .hint {
+    margin-top: 10px;
+    color: #6b7280;
+    font-size: 13px;
+  }
+  @media (max-width: 700px) {
+    .status { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cube Drawing</h1>
+  <p class="desc">
+    화면에 주어진 정육면체의 한 면만 보고, 보이지 않는 나머지 모서리들을 그려 보세요.
+    <b>채점</b>하면 원래 정육면체의 투영 결과와 비교합니다.
+  </p>
+
+  <!-- 버튼, 그림판 전체를 묶어주는 래퍼 -->
+  <div class="app-container" id="appContainer">
+    <div class="toolbar">
+      <button id="newBtn">새 문제</button>
+      <button id="scoreBtn">채점</button>
+      <button id="revealBtn" class="secondary">정답 보기</button>
+      <label class="toggle-label">
+        <input type="checkbox" id="visibleModeToggle" checked>
+        보이는 모서리만 채점
+      </label>
+    </div>
+
+    <div class="canvas-box" id="canvasBox">
+      <!-- 그림판 오른쪽 상단에 위치한 점수 -->
+      <div class="score-floating" id="scoreText">점수: -</div>
+      
+      <canvas id="canvas" width="1100" height="760"></canvas>
+      
+      <div class="resize-grip" id="resizeGrip" aria-label="그림판 크기 조절"></div>
+      
+      <!-- 전체화면 모드일 때만 리사이즈 그립 자리에 뜹니다 -->
+      <div class="fs-exit-btn" id="fsExitBtn" title="전체화면 닫기">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>
+        </svg>
+      </div>
+    </div>
+
+    <div class="canvas-controls">
+      <!-- 전체화면 토글(진입/취소) 버튼 -->
+      <button id="fsEnterBtn" class="secondary" title="전체화면으로 확장">전체화면</button>
+      <button id="zoomOutBtn" class="secondary" title="축소">−</button>
+      <button id="viewResetBtn" class="secondary" title="정육면체와 그림의 위치 및 확대율을 처음 상태로 복원">처음 위치</button>
+      <button id="zoomInBtn" class="secondary" title="확대">+</button>
+      <button id="undoBtn" class="secondary" title="가장 최근 작업 되돌리기">되돌리기</button>
+      <button id="clearBtn" class="secondary">모두 지우기</button>
+      <button id="eraserBtn" class="secondary">지우개</button>
+      <button id="segmentBtn" class="secondary">선분</button>
+    </div>
+  </div>
+
+  <div class="status">
+    <div class="card">
+      <div class="label">그린 선</div>
+      <div class="value" id="lineCount">0</div>
+    </div>
+    <div class="card">
+      <div class="label">방향 점수</div>
+      <div class="value" id="angleScore">-</div>
+    </div>
+    <div class="card">
+      <div class="label">위치 점수</div>
+      <div class="value" id="positionScore">-</div>
+    </div>
+    <div class="card">
+      <div class="label">길이 점수</div>
+      <div class="value" id="lengthScore">-</div>
+    </div>
+  </div>
+
+  <div class="hint">
+    왼쪽 드래그 = 그리기 · 오른쪽 드래그 = 임시 지우기 · 가운데(휠) 버튼 드래그 = 전체 이동.
+    <b>지우개</b>를 켜면 계속 지우개로 동작합니다.
+    <b>선분</b>을 켠 뒤 두 점을 차례로 클릭하면 두 점 사이에 직선 선분이 생성됩니다.
+    확대/축소는 그리는 중에도 가능하며, 마우스 위치를 중심으로 확대/축소됩니다.
+    방향키로 전체 장면을 이동할 수 있고, <b>Ctrl+Z</b> 또는 아래의 <b>되돌리기</b> 버튼으로 작업을 되돌릴 수 있습니다.
+    그림판 오른쪽 아래의 <b>그랩</b>을 드래그하면 그림판 전체 세로 크기를 조절할 수 있습니다.
+    Daromeon Cube Drawing을 따라 만듬
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const BASE_W = 1100;
+const BASE_H = 760;
+
+const CENTER = { x: BASE_W / 2, y: BASE_H / 2 };
+const FOCAL = 700;
+const CUBE_SIZE = 2.2;
+
+let problem = null;
+let strokes = [];
+let activeStroke = null;
+let scored = false;
+let reveal = false;
+let currentPointerId = null;
+
+// Undo history.
+let undoStack = [];
+let currentEraseRemoved = [];
+
+// View transform
+let viewZoom = 1.0;
+let viewPan = {x: 0, y: 0};
+const MIN_VIEW_ZOOM = 0.35;
+const MAX_VIEW_ZOOM = 3.5;
+
+// Segment tool.
+let segmentMode = false;
+let segmentFirstPoint = null;
+let segmentHoverPoint = null;
+
+// Middle-mouse (wheel-button) panning.
+let panState = null;
+
+// Resizable drawing board.
+let boardResizeState = null;
+let boardUserSized = false;
+const BOARD_MIN_HEIGHT = 220;
+
+function getBoardBounds() {
+  const maxHeight = 3000;
+  return { maxHeight };
+}
+
+function updateCanvasBufferSize() {
+  const box = document.getElementById("canvasBox");
+  const rect = box.getBoundingClientRect();
+  const newW = Math.round(rect.width);
+  const newH = Math.round(rect.height);
+  if (newW > 0 && newH > 0 && (canvas.width !== newW || canvas.height !== newH)) {
+    canvas.width = newW;
+    canvas.height = newH;
+    draw();
+  }
+}
+
+// 세로 길이(height)만 조절하도록 수정
+function setBoardSize(height, remember=true) {
+  const bounds = getBoardBounds();
+  const finalHeight = Math.max(BOARD_MIN_HEIGHT, Math.min(height, bounds.maxHeight));
+
+  const box = document.getElementById("canvasBox");
+  box.style.height = `${Math.round(finalHeight)}px`;
+
+  updateCanvasBufferSize();
+
+  if (remember) boardUserSized = true;
+}
+
+function setResponsiveDefaultBoardSize() {
+  const controlsReserve = Math.max(180, Math.min(310, window.innerHeight * 0.42));
+  const initialMaxHeight = Math.max(BOARD_MIN_HEIGHT, window.innerHeight - controlsReserve);
+  const height = Math.min(initialMaxHeight, BASE_H);
+  
+  setBoardSize(Math.max(BOARD_MIN_HEIGHT, height), false);
+}
+
+function constrainBoardToViewport() {
+  const box = document.getElementById("canvasBox");
+  const rect = box.getBoundingClientRect();
+  const bounds = getBoardBounds();
+  if (rect.height > bounds.maxHeight) {
+    setBoardSize(Math.min(rect.height, bounds.maxHeight), false);
+  }
+}
+
+function add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
+function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
+function mul(a, s) { return { x: a.x * s, y: a.y * s }; }
+function dot(a, b) { return a.x * b.x + a.y * b.y; }
+function length(v) { return Math.hypot(v.x, v.y); }
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function normalize(v) {
+  const n = length(v);
+  if (n < 1e-9) return { x: 0, y: 0 };
+  return { x: v.x / n, y: v.y / n };
+}
+
+function clamp(x, a, b) {
+  return Math.max(a, Math.min(b, x));
+}
+
+function sceneToScreen(p) {
+  return {
+    x: CENTER.x + (p.x - CENTER.x) * viewZoom + viewPan.x,
+    y: CENTER.y + (p.y - CENTER.y) * viewZoom + viewPan.y
+  };
+}
+
+function screenToScene(p) {
+  return {
+    x: CENTER.x + (p.x - CENTER.x - viewPan.x) / viewZoom,
+    y: CENTER.y + (p.y - CENTER.y - viewPan.y) / viewZoom
+  };
+}
+
+function resetView() {
+  if (!problem) {
+    viewZoom = 1.0;
+    viewPan = {x: 0, y: 0};
+    draw();
+    return;
+  }
+
+  viewPan = {
+    x: canvas.width / 2 - CENTER.x,
+    y: canvas.height / 2 - CENTER.y
+  };
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of problem.projected) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  
+  const cubeW = maxX - minX;
+  const cubeH = maxY - minY;
+  
+  const margin = 40;
+  const scaleX = (canvas.width - margin) / cubeW;
+  const scaleY = (canvas.height - margin) / cubeH;
+  
+  const idealZoom = Math.min(1.0, scaleX, scaleY);
+  viewZoom = Math.max(MIN_VIEW_ZOOM, idealZoom);
+
+  draw();
+}
+
+function setZoomAt(factor, screenPoint = {x: BASE_W/2, y: BASE_H/2}) {
+  const oldScenePoint = screenToScene(screenPoint);
+  const nextZoom = clamp(viewZoom * factor, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
+  if (Math.abs(nextZoom - viewZoom) < 1e-9) return;
+
+  viewZoom = nextZoom;
+  const after = sceneToScreen(oldScenePoint);
+  viewPan.x += screenPoint.x - after.x;
+  viewPan.y += screenPoint.y - after.y;
+  draw();
+}
+
+function rotationMatrix(yaw, pitch, roll) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const cr = Math.cos(roll), sr = Math.sin(roll);
+
+  const Rz = [[cy, -sy, 0], [sy,  cy, 0], [0,    0, 1]];
+  const Ry = [[cp, 0, sp], [0,  1, 0], [-sp, 0, cp]];
+  const Rx = [[1, 0,  0], [0, cr, -sr], [0, sr,  cr]];
+
+  return matMul(matMul(Rz, Ry), Rx);
+}
+
+function matMul(A, B) {
+  const out = Array.from({length: A.length}, () => Array(B[0].length).fill(0));
+  for (let i = 0; i < A.length; i++) {
+    for (let j = 0; j < B[0].length; j++) {
+      for (let k = 0; k < B.length; k++) {
+        out[i][j] += A[i][k] * B[k][j];
+      }
+    }
+  }
+  return out;
+}
+
+function applyMatrix(p, R) {
+  return {
+    x: R[0][0]*p.x + R[0][1]*p.y + R[0][2]*p.z,
+    y: R[1][0]*p.x + R[1][1]*p.y + R[1][2]*p.z,
+    z: R[2][0]*p.x + R[2][1]*p.y + R[2][2]*p.z
+  };
+}
+
+function cross3(a, b) {
+  return { x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x };
+}
+
+function dot3(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+
+function normalize3(v) {
+  const n = Math.hypot(v.x, v.y, v.z);
+  if (n < 1e-9) return {x:0,y:0,z:0};
+  return {x:v.x/n,y:v.y/n,z:v.z/n};
+}
+
+function createCube() {
+  const s = CUBE_SIZE / 2;
+
+  const vertices = [
+    {x:-s,y:-s,z:-s}, {x: s,y:-s,z:-s}, {x: s,y: s,z:-s}, {x:-s,y: s,z:-s}, 
+    {x:-s,y:-s,z: s}, {x: s,y:-s,z: s}, {x: s,y: s,z: s}, {x:-s,y: s,z: s}  
+  ];
+
+  const edges = [
+    [0,1], [1,2], [2,3], [3,0],
+    [4,5], [5,6], [6,7], [7,4],
+    [0,4], [1,5], [2,6], [3,7]
+  ];
+
+  const faces = [
+    [0,3,2,1], [4,5,6,7], [0,1,5,4], [2,3,7,6], [0,4,7,3], [1,2,6,5]
+  ];
+
+  return {vertices, edges, faces};
+}
+
+function faceNormal(vertices, face) {
+  const a = vertices[face[0]];
+  const b = vertices[face[1]];
+  const c = vertices[face[2]];
+
+  return normalize3(cross3(
+    {x:b.x-a.x, y:b.y-a.y, z:b.z-a.z},
+    {x:c.x-a.x, y:c.y-a.y, z:c.z-a.z}
+  ));
+}
+
+function chooseVisibleFace(vertices, faces) {
+  let best = faces[0];
+  let bestScore = -Infinity;
+  const camera = {x:0,y:0,z:0};
+
+  for (const face of faces) {
+    const p = vertices[face[0]];
+    const n = faceNormal(vertices, face);
+    const toCamera = normalize3({ x: camera.x-p.x, y: camera.y-p.y, z: camera.z-p.z });
+    const score = dot3(n, toCamera);
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = face;
+    }
+  }
+  return best;
+}
+
+function project3D(p) {
+  const z = Math.max(0.15, p.z);
+  return {
+    x: CENTER.x + FOCAL * p.x / z,
+    y: CENTER.y - FOCAL * p.y / z
+  };
+}
+
+function computeVanishingPoints(transformed) {
+  const families = [
+    { name:"X축", color:"#2563eb", a:0, b:1 },
+    { name:"Y축", color:"#16a34a", a:0, b:3 },
+    { name:"Z축", color:"#dc2626", a:0, b:4 }
+  ];
+
+  return families.map(f => {
+    const A = transformed[f.a];
+    const B = transformed[f.b];
+    const dx = B.x-A.x, dy = B.y-A.y, dz = B.z-A.z;
+
+    if (Math.abs(dz) < 1e-9) {
+      return {name:f.name, color:f.color, point:null, atInfinity:true};
+    }
+
+    return {
+      name:f.name,
+      color:f.color,
+      point:{ x:CENTER.x + FOCAL*dx/dz, y:CENTER.y - FOCAL*dy/dz },
+      atInfinity:false
+    };
+  });
+}
+
+function rand(a,b) { return a + Math.random() * (b-a); }
+
+function isPointInPolygon(p, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersect = ((yi > p.y) !== (yj > p.y)) &&
+      (p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function generateProblem() {
+  const cube = createCube();
+  let yaw, pitch, roll, cameraZ;
+  let transformed, givenFace, projected;
+  let validProblem = false;
+
+  do {
+    yaw = rand(-1.20, 1.20);
+    pitch = rand(-1.20, 1.20);
+    if (Math.abs(yaw) < 0.45 && Math.abs(pitch) < 0.45) continue;
+
+    roll = rand(-1.20, 1.20);
+    cameraZ = rand(2.5, 10.0);
+
+    const R = rotationMatrix(yaw, pitch, roll);
+
+    transformed = cube.vertices.map(v => {
+      const p = applyMatrix(v, R);
+      p.z += cameraZ;
+      return p;
+    });
+
+    givenFace = chooseVisibleFace(transformed, cube.faces);
+    projected = transformed.map(project3D);
+
+    const polygon = givenFace.map(idx => projected[idx]);
+    const otherIndices = [0, 1, 2, 3, 4, 5, 6, 7].filter(idx => !givenFace.includes(idx));
+    const hasVertexOutside = otherIndices.some(idx => !isPointInPolygon(projected[idx], polygon));
+
+    const axisDirections = [
+      {x:transformed[1].x-transformed[0].x, y:transformed[1].y-transformed[0].y, z:transformed[1].z-transformed[0].z},
+      {x:transformed[3].x-transformed[0].x, y:transformed[3].y-transformed[0].y, z:transformed[3].z-transformed[0].z},
+      {x:transformed[4].x-transformed[0].x, y:transformed[4].y-transformed[0].y, z:transformed[4].z-transformed[0].z}
+    ];
+
+    const vanishingDepthOK = axisDirections.every(d => Math.abs(d.z) >= 0.16);
+
+    if (hasVertexOutside && vanishingDepthOK) validProblem = true;
+  } while (!validProblem);
+
+  const givenEdges = cube.edges.filter(([a,b]) => givenFace.includes(a) && givenFace.includes(b));
+  const missingEdges = cube.edges.filter(([a,b]) => !givenEdges.some(([x,y]) => (x===a && y===b) || (x===b && y===a)));
+
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (const p of projected) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  const currentW = maxX - minX;
+  const currentH = maxY - minY;
+  const targetSize = 380; 
+  const currentMaxDim = Math.max(currentW, currentH);
+  const scale = targetSize / currentMaxDim;
+
+  const vanishingPointsRaw = computeVanishingPoints(transformed);
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const targetCx = BASE_W / 2;
+  const targetCy = BASE_H / 2; 
+
+  for (const p of projected) {
+    p.x = targetCx + (p.x - cx) * scale;
+    p.y = targetCy + (p.y - cy) * scale;
+  }
+
+  const vanishingPoints = vanishingPointsRaw.map(vp => {
+    if (!vp.point) return vp;
+    return {
+      ...vp,
+      point:{
+        x:targetCx + (vp.point.x-cx)*scale,
+        y:targetCy + (vp.point.y-cy)*scale
+      }
+    };
+  });
+
+  const visibleFaces = cube.faces.filter(face => {
+    const p = transformed[face[0]];
+    const n = faceNormal(transformed, face);
+    const toCamera = normalize3({ x: -p.x, y: -p.y, z: -p.z });
+    return dot3(n, toCamera) > 0;
+  });
+
+  const isEdgeVisible = (a, b) => {
+    return visibleFaces.some(face => face.includes(a) && face.includes(b));
+  };
+
+  const visibleMissingEdges = missingEdges.filter(([a,b]) => isEdgeVisible(a,b));
+
+  return {
+    transformed,
+    projected,
+    edges: cube.edges,
+    givenFace,
+    givenEdges,
+    vanishingPoints,
+    targetLinesAll: missingEdges.map(([a,b]) => ({
+      p1: projected[a], p2: projected[b]
+    })),
+    targetLinesVisible: visibleMissingEdges.map(([a,b]) => ({
+      p1: projected[a], p2: projected[b]
+    }))
+  };
+}
+
+function drawLine(p1, p2, color, width=4, dashed=false) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (dashed) ctx.setLineDash([8,8]);
+  else ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.moveTo(p1.x,p1.y);
+  ctx.lineTo(p2.x,p2.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "#fafafa";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  if (!problem) return;
+
+  ctx.save();
+  ctx.translate(CENTER.x + viewPan.x, CENTER.y + viewPan.y);
+  ctx.scale(viewZoom, viewZoom);
+  ctx.translate(-CENTER.x, -CENTER.y);
+
+  const facePts = problem.givenFace.map(i => problem.projected[i]);
+
+  ctx.save();
+  ctx.fillStyle = "#e5e7eb";
+  ctx.beginPath();
+  ctx.moveTo(facePts[0].x,facePts[0].y);
+  for (let i=1;i<facePts.length;i++) {
+    ctx.lineTo(facePts[i].x,facePts[i].y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  for (const [a,b] of problem.givenEdges) {
+    drawLine(problem.projected[a],problem.projected[b],"#111827",6);
+  }
+
+  if (reveal) {
+    const useVisibleOnly = document.getElementById("visibleModeToggle").checked;
+    const targetLines = useVisibleOnly ? problem.targetLinesVisible : problem.targetLinesAll;
+    for (const line of targetLines) {
+      drawLine(line.p1,line.p2,"#dc2626",4,true);
+    }
+  }
+
+  for (const stroke of strokes) {
+    drawStroke(stroke,"#2563eb",5);
+  }
+
+  if (activeStroke) {
+    drawStroke(activeStroke,"#2563eb",5);
+  }
+
+  if (segmentMode && segmentFirstPoint) {
+    ctx.save();
+    ctx.fillStyle = "#7c3aed";
+    ctx.beginPath();
+    ctx.arc(segmentFirstPoint.x, segmentFirstPoint.y, 6, 0, Math.PI*2);
+    ctx.fill();
+    if (segmentHoverPoint) {
+      drawLine(segmentFirstPoint, segmentHoverPoint, "#7c3aed", 3, true);
+    }
+    ctx.restore();
+  }
+
+  if (scored && reveal) {
+    drawVanishingPointReview();
+  }
+
+  ctx.restore();
+
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "15px system-ui";
+  ctx.fillText(
+    scored && reveal
+      ? `채점 결과 · 소실점 표시 · 확대 ${Math.round(viewZoom*100)}%`
+      : `주어진 면만 보고 나머지 모서리를 그려 보세요. · 확대 ${Math.round(viewZoom*100)}%`,
+    22, canvas.height - 22
+  );
+
+  if (scored && reveal) {
+    ctx.fillStyle = "#374151";
+    ctx.font = "bold 14px system-ui";
+    ctx.fillText(`확대 ${Math.round(viewZoom*100)}%`, canvas.width - 105, canvas.height - 22);
+  }
+}
+
+function drawVanishingPointReview() {
+  const vps = problem.vanishingPoints || [];
+
+  const groups = [
+    [[0,1],[2,3],[4,5],[6,7]],
+    [[0,3],[1,2],[4,7],[5,6]],
+    [[0,4],[1,5],[2,6],[3,7]]
+  ];
+
+  for (let i=0;i<vps.length;i++) {
+    const vp = vps[i];
+    if (vp.atInfinity || !vp.point) continue;
+
+    const p = vp.point;
+    const group = groups[i];
+
+    ctx.save();
+    ctx.strokeStyle = vp.color;
+    ctx.globalAlpha = 0.24;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([7,7]);
+
+    for (const [a,b] of group) {
+      const aP = problem.projected[a];
+      const bP = problem.projected[b];
+      const mid = {
+        x:(aP.x+bP.x)/2,
+        y:(aP.y+bP.y)/2
+      };
+
+      ctx.beginPath();
+      ctx.moveTo(mid.x,mid.y);
+      ctx.lineTo(p.x,p.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = vp.color;
+    ctx.fillStyle = "#ffffff";
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,8,0,Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.x-14,p.y);
+    ctx.lineTo(p.x+14,p.y);
+    ctx.moveTo(p.x,p.y-14);
+    ctx.lineTo(p.x,p.y+14);
+    ctx.stroke();
+
+    const label = `소실점 ${vp.name}`;
+    ctx.font = "bold 14px system-ui";
+    const width = ctx.measureText(label).width;
+
+    ctx.fillStyle = "rgba(255,255,255,0.90)";
+    ctx.fillRect(p.x+12,p.y-26,width+10,23);
+
+    ctx.fillStyle = vp.color;
+    ctx.fillText(label,p.x+17,p.y-10);
+    ctx.restore();
+  }
+}
+
+function drawStroke(points, color, width) {
+  if (!points || points.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i=1; i<points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+let inputMode = "draw";
+let eraserMode = false;
+const ERASER_RADIUS_SCREEN = 18;
+
+function canvasPoint(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x:(e.clientX-r.left)*(canvas.width/r.width),
+    y:(e.clientY-r.top)*(canvas.height/r.height)
+  };
+}
+
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+canvas.addEventListener("pointerdown", e => {
+  if (scored && e.button !== 1) return;
+
+  currentPointerId = e.pointerId;
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+
+  const screenP = canvasPoint(e);
+
+  if (e.button === 1) {
+    inputMode = "pan";
+    panState = {
+      start: screenP,
+      panStart: {x:viewPan.x, y:viewPan.y}
+    };
+    canvas.classList.add("pan-mode");
+    activeStroke = null;
+    return;
+  }
+
+  if (e.button === 2) {
+    inputMode = "erase";
+    canvas.classList.add("eraser");
+    const sceneP = screenToScene(screenP);
+    currentEraseRemoved = [];
+    eraseAt(sceneP, ERASER_RADIUS_SCREEN / viewZoom);
+    activeStroke = [{...sceneP}];
+    draw();
+    return;
+  }
+
+  if (e.button !== 0) return;
+
+  if (eraserMode) {
+    inputMode = "erase";
+    canvas.classList.add("eraser");
+    const sceneP = screenToScene(screenP);
+    currentEraseRemoved = [];
+    eraseAt(sceneP, ERASER_RADIUS_SCREEN / viewZoom);
+    activeStroke = [{...sceneP}];
+    draw();
+    return;
+  }
+
+  if (segmentMode) {
+    inputMode = "segment";
+    const sceneP = screenToScene(screenP);
+
+    if (!segmentFirstPoint) {
+      segmentFirstPoint = {...sceneP};
+      segmentHoverPoint = {...sceneP};
+    } else {
+      const second = {...sceneP};
+      if (dist(segmentFirstPoint, second) >= 6 / viewZoom) {
+        const stroke = [segmentFirstPoint, second];
+        strokes.push(stroke);
+        undoStack.push({type:"draw", stroke});
+      }
+      segmentFirstPoint = null;
+      segmentHoverPoint = null;
+      inputMode = "draw";
+      updateLineCount();
+    }
+    draw();
+    return;
+  }
+
+  inputMode = "draw";
+  const sceneP = screenToScene(screenP);
+  activeStroke = [sceneP];
+  canvas.classList.remove("eraser");
+  draw();
+});
+
+canvas.addEventListener("pointermove", e => {
+  if (currentPointerId !== e.pointerId) return;
+
+  const screenP = canvasPoint(e);
+
+  if (inputMode === "pan") {
+    if (!panState) return;
+    viewPan.x = panState.panStart.x + (screenP.x - panState.start.x);
+    viewPan.y = panState.panStart.y + (screenP.y - panState.start.y);
+    draw();
+    return;
+  }
+
+  if (inputMode === "segment") {
+    if (segmentFirstPoint) {
+      segmentHoverPoint = screenToScene(screenP);
+      draw();
+    }
+    return;
+  }
+
+  const sceneP = screenToScene(screenP);
+
+  if (inputMode === "erase") {
+    eraseAt(sceneP, ERASER_RADIUS_SCREEN / viewZoom);
+    activeStroke.push({...sceneP});
+    draw();
+    return;
+  }
+
+  if (inputMode === "draw" && activeStroke) {
+    const prev = activeStroke[activeStroke.length-1];
+    if (dist(prev,sceneP) >= 2 / viewZoom) {
+      activeStroke.push(sceneP);
+      draw();
+    }
+  }
+});
+
+function finishPointer(e) {
+  if (currentPointerId !== e.pointerId) return;
+
+  if (inputMode === "draw") {
+    if (activeStroke && activeStroke.length >= 5) {
+      const clean = simplifyStroke(activeStroke);
+      if (clean) {
+        strokes.push(activeStroke);
+        undoStack.push({type:"draw",stroke:activeStroke});
+      }
+    }
+  } else if (inputMode === "erase") {
+    if (currentEraseRemoved.length > 0) {
+      undoStack.push({type:"erase",items:currentEraseRemoved.slice()});
+    }
+  }
+
+  activeStroke = null;
+  currentEraseRemoved = [];
+  currentPointerId = null;
+  panState = null;
+
+  inputMode = eraserMode ? "erase" : "draw";
+  if (eraserMode) canvas.classList.add("eraser");
+  else canvas.classList.remove("eraser");
+  canvas.classList.remove("pan-mode");
+
+  updateLineCount();
+  draw();
+}
+
+canvas.addEventListener("pointerup", finishPointer);
+canvas.addEventListener("pointercancel", finishPointer);
+
+function eraseAt(point, radius) {
+  const next = [];
+  let changed = false;
+
+  for (let i=0;i<strokes.length;i++) {
+    const stroke = strokes[i];
+    if (strokeTouchesCircle(stroke,point,radius)) {
+      if (!currentEraseRemoved.some(item => item.stroke === stroke)) {
+        currentEraseRemoved.push({stroke,index:i});
+      }
+      changed = true;
+    } else {
+      next.push(stroke);
+    }
+  }
+
+  if (changed) {
+    strokes = next;
+    updateLineCount();
+  }
+}
+
+function strokeTouchesCircle(stroke,center,radius) {
+  if (!stroke || stroke.length === 0) return false;
+  for (let i=1;i<stroke.length;i++) {
+    if (segmentDistance(center,stroke[i-1],stroke[i]) <= radius) return true;
+  }
+  return dist(stroke[0],center) <= radius;
+}
+
+function segmentDistance(p,a,b) {
+  const ab = sub(b,a);
+  const ab2 = dot(ab,ab);
+  if (ab2 < 1e-9) return dist(p,a);
+  const t = clamp(dot(sub(p,a),ab)/ab2,0,1);
+  const projection = add(a,mul(ab,t));
+  return dist(p,projection);
+}
+
+function undoLastAction() {
+  if (scored || undoStack.length === 0) return;
+
+  const action = undoStack.pop();
+
+  if (action.type === "draw") {
+    const index = strokes.lastIndexOf(action.stroke);
+    if (index !== -1) strokes.splice(index,1);
+  } else if (action.type === "erase") {
+    const items = action.items.slice().sort((a,b) => a.index-b.index);
+    for (const item of items) {
+      const index = clamp(item.index,0,strokes.length);
+      strokes.splice(index,0,item.stroke);
+    }
+  } else if (action.type === "clear") {
+    strokes = action.strokes.slice();
+  }
+
+  updateLineCount();
+  draw();
+}
+
+function simplifyStroke(stroke) {
+  if (!stroke || stroke.length === 0) return null;
+  
+  // 선분 도구로 그린 경우 (시작점과 끝점 2개로 구성됨)
+  if (stroke.length === 2) {
+    const p1 = stroke[0], p2 = stroke[1];
+    if (dist(p1, p2) < 4) return null;
+    return { p1, p2 };
+  }
+
+  // 자유 드로잉인 경우
+  if (stroke.length < 5) return null;
+  const p1 = stroke[0], p2 = stroke[stroke.length-1];
+  if (dist(p1,p2) < 12) return null;
+  return {p1,p2};
+}
+
+function angleSimilarity(a1,a2,b1,b2) {
+  const va = normalize(sub(a2,a1));
+  const vb = normalize(sub(b2,b1));
+  if (length(va) < 1e-9 || length(vb) < 1e-9) return 0;
+  return clamp(Math.abs(dot(va,vb)),0,1);
+}
+
+function endpointScore(target,user) {
+  const diag = Math.hypot(BASE_W, BASE_H);
+  const e1 = (dist(target.p1,user.p1) + dist(target.p2,user.p2)) / (2*diag);
+  const e2 = (dist(target.p1,user.p2) + dist(target.p2,user.p1)) / (2*diag);
+  return clamp(1 - Math.min(e1,e2)*3.2, 0, 1);
+}
+
+function lengthScore(target,user) {
+  const lt = dist(target.p1,target.p2);
+  const lu = dist(user.p1,user.p2);
+  if (lt < 1e-9) return 0;
+  return clamp(1-Math.abs(1-lu/lt), 0, 1);
+}
+
+function lineSimilarity(target,user) {
+  const angle = angleSimilarity(target.p1,target.p2, user.p1,user.p2);
+  const pos = endpointScore(target,user);
+  const len = lengthScore(target,user);
+  return { total: clamp(0.45*angle + 0.40*pos + 0.15*len, 0, 1), angle, position: pos, length: len };
+}
+
+function hungarian(matrix) {
+  const n = matrix.length;
+  const m = matrix[0]?.length || 0;
+  if (!n || !m) return [];
+
+  const size = Math.max(n,m);
+  const BIG = 10;
+  const a = Array.from({length:size}, (_,i) =>
+    Array.from({length:size}, (_,j) => (i<n && j<m) ? matrix[i][j] : BIG)
+  );
+  const u = Array(size+1).fill(0), v = Array(size+1).fill(0), p = Array(size+1).fill(0), way = Array(size+1).fill(0);
+
+  for (let i=1; i<=size; i++) {
+    p[0] = i;
+    let j0 = 0;
+    const minv = Array(size+1).fill(Infinity);
+    const used = Array(size+1).fill(false);
+    do {
+      used[j0] = true;
+      const i0 = p[j0];
+      let delta = Infinity, j1 = 0;
+      for (let j=1; j<=size; j++) {
+        if (used[j]) continue;
+        const cur = a[i0-1][j-1]-u[i0]-v[j];
+        if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+        if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+      }
+      for (let j=0; j<=size; j++) {
+        if (used[j]) { u[p[j]] += delta; v[j] -= delta; } 
+        else { minv[j] -= delta; }
+      }
+      j0 = j1;
+    } while (p[j0] !== 0);
+    do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0 !== 0);
+  }
+
+  const result = [];
+  for (let j=1; j<=size; j++) {
+    const i = p[j];
+    if (i>=1 && i<=n && j<=m) result.push([i-1,j-1]);
+  }
+  return result;
+}
+
+function scoreDrawing() {
+  const useVisibleOnly = document.getElementById("visibleModeToggle").checked;
+  const targetLines = useVisibleOnly ? problem.targetLinesVisible : problem.targetLinesAll;
+  
+  const userLines = strokes.map(simplifyStroke).filter(Boolean);
+  if (!userLines.length) {
+    return { overall:0, angle:0, position:0, length:0, matched:0, total:targetLines.length };
+  }
+
+  const matrix = targetLines.map(target => userLines.map(user => 1-lineSimilarity(target,user).total));
+  const pairs = hungarian(matrix);
+
+  let angleSum = 0, posSum = 0, lengthSum = 0, similaritySum = 0, validMatches = 0;
+
+  for (const [ti,ui] of pairs) {
+    if (ti >= targetLines.length || ui >= userLines.length) continue;
+    const s = lineSimilarity(targetLines[ti],userLines[ui]);
+    if (s.total < 0.18) continue;
+
+    angleSum += s.angle; posSum += s.position; lengthSum += s.length;
+    similaritySum += s.total; validMatches++;
+  }
+
+  const completion = validMatches / targetLines.length;
+  let overall = (validMatches ? similaritySum/validMatches : 0) * completion * 100;
+
+  const extra = Math.max(0,userLines.length-targetLines.length);
+  if (extra > 0) overall *= Math.max(0,1-0.05*extra);
+
+  const denom = validMatches || 1;
+  return {
+    overall: clamp(overall,0,100),
+    angle: clamp((angleSum/denom)*100,0,100),
+    position: clamp((posSum/denom)*100,0,100),
+    length: clamp((lengthSum/denom)*100,0,100),
+    matched: validMatches,
+    total: targetLines.length
+  };
+}
+
+function updateLineCount() { document.getElementById("lineCount").textContent = strokes.length; }
+
+function showScore() {
+  const result = scoreDrawing();
+
+  document.getElementById("scoreText").textContent =
+    `점수: ${result.overall.toFixed(1)} / 100`;
+  document.getElementById("angleScore").textContent =
+    `${result.angle.toFixed(1)}`;
+  document.getElementById("positionScore").textContent =
+    `${result.position.toFixed(1)}`;
+  document.getElementById("lengthScore").textContent =
+    `${result.length.toFixed(1)}`;
+
+  scored = true;
+  reveal = true;
+  segmentFirstPoint = null;
+  segmentHoverPoint = null;
+  activeStroke = null;
+  draw();
+}
+
+function resetStats() {
+  document.getElementById("scoreText").textContent = "점수: -";
+  document.getElementById("angleScore").textContent = "-";
+  document.getElementById("positionScore").textContent = "-";
+  document.getElementById("lengthScore").textContent = "-";
+  document.getElementById("lineCount").textContent = "0";
+}
+
+function newProblem() {
+  problem = generateProblem();
+  strokes = [];
+  activeStroke = null;
+  scored = false;
+  reveal = false;
+  eraserMode = false;
+  inputMode = "draw";
+  currentEraseRemoved = [];
+  undoStack = [];
+  segmentMode = false;
+  segmentFirstPoint = null;
+  segmentHoverPoint = null;
+
+  canvas.classList.remove("eraser");
+  canvas.classList.remove("pan-mode");
+
+  const eraserButton = document.getElementById("eraserBtn");
+  eraserButton.textContent = "지우개";
+  eraserButton.classList.remove("active");
+  document.getElementById("segmentBtn").classList.remove("active");
+
+  resetStats();
+  resetView();
+}
+
+document.getElementById("newBtn").addEventListener("click", newProblem);
+document.getElementById("undoBtn").addEventListener("click", () => { undoLastAction(); });
+
+// Resize grip (세로만 조절되도록 설정됨)
+const resizeGrip = document.getElementById("resizeGrip");
+resizeGrip.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const box = document.getElementById("canvasBox");
+  const rect = box.getBoundingClientRect();
+
+  boardResizeState = {
+    pointerId: e.pointerId,
+    startX: e.clientX,
+    startY: e.clientY,
+    startWidth: rect.width,
+    startHeight: rect.height
+  };
+
+  try { resizeGrip.setPointerCapture(e.pointerId); } catch (_) {}
+});
+
+resizeGrip.addEventListener("pointermove", e => {
+  if (!boardResizeState || boardResizeState.pointerId !== e.pointerId) return;
+
+  const dy = e.clientY - boardResizeState.startY;
+  const candidateHeight = boardResizeState.startHeight + dy;
+
+  // 세로(height)만 조절
+  setBoardSize(candidateHeight, true);
+});
+
+function finishBoardResize(e) {
+  if (!boardResizeState || boardResizeState.pointerId !== e.pointerId) return;
+  boardResizeState = null;
+}
+
+resizeGrip.addEventListener("pointerup", finishBoardResize);
+resizeGrip.addEventListener("pointercancel", finishBoardResize);
+
+window.addEventListener("resize", () => {
+  if (boardUserSized) constrainBoardToViewport();
+  else setResponsiveDefaultBoardSize();
+});
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  if (scored || strokes.length === 0) return;
+
+  undoStack.push({type:"clear",strokes:strokes.slice()});
+  strokes = [];
+  activeStroke = null;
+  segmentFirstPoint = null;
+  segmentHoverPoint = null;
+  updateLineCount();
+  draw();
+});
+
+document.getElementById("eraserBtn").addEventListener("click", () => {
+  if (scored) return;
+
+  eraserMode = !eraserMode;
+  const button = document.getElementById("eraserBtn");
+  const segmentButton = document.getElementById("segmentBtn");
+
+  if (eraserMode) {
+    segmentMode = false;
+    segmentFirstPoint = null;
+    segmentHoverPoint = null;
+    button.textContent = "그리기 모드";
+    button.classList.add("active");
+    segmentButton.classList.remove("active");
+    canvas.classList.add("eraser");
+  } else {
+    button.textContent = "지우개";
+    button.classList.remove("active");
+    canvas.classList.remove("eraser");
+  }
+  draw();
+});
+
+document.getElementById("segmentBtn").addEventListener("click", () => {
+  if (scored) return;
+
+  segmentMode = !segmentMode;
+  const button = document.getElementById("segmentBtn");
+  const eraserButton = document.getElementById("eraserBtn");
+
+  if (segmentMode) {
+    eraserMode = false;
+    segmentFirstPoint = null;
+    segmentHoverPoint = null;
+    button.classList.add("active");
+    eraserButton.classList.remove("active");
+    eraserButton.textContent = "지우개";
+    canvas.classList.remove("eraser");
+  } else {
+    button.classList.remove("active");
+    segmentFirstPoint = null;
+    segmentHoverPoint = null;
+  }
+  draw();
+});
+
+document.getElementById("scoreBtn").addEventListener("click", () => {
+  if (scored) return;
+  showScore();
+});
+
+document.getElementById("revealBtn").addEventListener("click", () => {
+  reveal = !reveal;
+  draw();
+});
+
+document.getElementById("visibleModeToggle").addEventListener("change", () => {
+  if (scored) showScore();
+  else if (reveal) draw();
+});
+
+document.getElementById("zoomOutBtn").addEventListener("click", () => {
+  setZoomAt(1/1.25);
+});
+
+document.getElementById("zoomInBtn").addEventListener("click", () => {
+  setZoomAt(1.25);
+});
+
+document.getElementById("viewResetBtn").addEventListener("click", () => {
+  resetView();
+});
+
+/* 전체화면 기능 로직 */
+const appContainer = document.getElementById("appContainer");
+const fsEnterBtn = document.getElementById("fsEnterBtn");
+const fsExitBtn = document.getElementById("fsExitBtn");
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    appContainer.requestFullscreen().catch(err => {
+      console.warn("Fullscreen error:", err);
+    });
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+fsEnterBtn.addEventListener("click", toggleFullscreen);
+fsExitBtn.addEventListener("click", toggleFullscreen);
+
+// 전체화면 모드가 변경될 때 하단 버튼 텍스트를 전환하고 캔버스 크기를 재계산합니다.
+document.addEventListener("fullscreenchange", () => {
+  const isFullscreen = !!document.fullscreenElement;
+  if (isFullscreen) {
+    fsEnterBtn.textContent = "전체화면 취소";
+    fsEnterBtn.title = "전체화면 닫기";
+    fsEnterBtn.classList.add("danger");
+  } else {
+    fsEnterBtn.textContent = "전체화면";
+    fsEnterBtn.title = "전체화면으로 확장";
+    fsEnterBtn.classList.remove("danger");
+  }
+  updateCanvasBufferSize();
+  setTimeout(updateCanvasBufferSize, 100);
+});
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const p = canvasPoint(e);
+  setZoomAt(e.deltaY < 0 ? 1.12 : 1/1.12, p);
+},{passive:false});
+
+window.addEventListener("keydown", e => {
+  const key = e.key.toLowerCase();
+
+  if ((e.ctrlKey || e.metaKey) && key === "z") {
+    if (!scored) {
+      e.preventDefault();
+      undoLastAction();
+    }
+    return;
+  }
+
+  const step = e.shiftKey ? 30 : 10;
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight" ||
+      e.key === "ArrowUp" || e.key === "ArrowDown") {
+    e.preventDefault();
+    if (e.key === "ArrowLeft") viewPan.x -= step;
+    if (e.key === "ArrowRight") viewPan.x += step;
+    if (e.key === "ArrowUp") viewPan.y -= step;
+    if (e.key === "ArrowDown") viewPan.y += step;
+    draw();
+    return;
+  }
+
+  if (key === "r") {
+    newProblem();
+    return;
+  }
+
+  if (key === "c" && !scored) {
+    if (strokes.length > 0) {
+      undoStack.push({type:"clear",strokes:strokes.slice()});
+    }
+    strokes = [];
+    activeStroke = null;
+    segmentFirstPoint = null;
+    segmentHoverPoint = null;
+    updateLineCount();
+    draw();
+    return;
+  }
+
+  if (e.key === "Enter" && !scored) {
+    showScore();
+  }
+});
+
+setResponsiveDefaultBoardSize();
+newProblem();
+</script>
+</body>
+</html>
