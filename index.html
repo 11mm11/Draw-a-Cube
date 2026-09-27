@@ -1203,21 +1203,28 @@ function angleSimilarity(a1,a2,b1,b2) {
   const va = normalize(sub(a2,a1));
   const vb = normalize(sub(b2,b1));
   if (length(va) < 1e-9 || length(vb) < 1e-9) return 0;
-  return clamp(Math.abs(dot(va,vb)),0,1);
+  
+  const cosAngle = clamp(Math.abs(dot(va,vb)), 0, 1);
+  // 코사인 값은 20도가 틀어져도 0.94로 매우 높습니다. 6제곱을 하여 약 69%로 떨어지게 만듭니다.
+  return Math.pow(cosAngle, 6); 
 }
 
 function endpointScore(target,user) {
-  const diag = Math.hypot(BASE_W, BASE_H);
-  const e1 = (dist(target.p1,user.p1) + dist(target.p2,user.p2)) / (2*diag);
-  const e2 = (dist(target.p1,user.p2) + dist(target.p2,user.p1)) / (2*diag);
-  return clamp(1 - Math.min(e1,e2)*3.2, 0, 1);
+  const e1 = (dist(target.p1,user.p1) + dist(target.p2,user.p2)) / 2;
+  const e2 = (dist(target.p1,user.p2) + dist(target.p2,user.p1)) / 2;
+  const minError = Math.min(e1, e2);
+  
+  // 평균 양끝점 오차가 0px이면 1점, 60px 이상이면 0점으로 맵핑 (기준 픽셀은 난이도에 따라 조절 가능)
+  return clamp(1 - (minError / 60), 0, 1);
 }
 
 function lengthScore(target,user) {
   const lt = dist(target.p1,target.p2);
   const lu = dist(user.p1,user.p2);
   if (lt < 1e-9) return 0;
-  return clamp(1-Math.abs(1-lu/lt), 0, 1);
+  // 오차 비율을 제곱하여 감점 폭을 키웁니다.
+  const errorRatio = Math.abs(1 - lu/lt);
+  return clamp(1 - Math.pow(errorRatio, 1.5), 0, 1);
 }
 
 function lineSimilarity(target,user) {
@@ -1336,6 +1343,8 @@ function scoreDrawing() {
 
   // 선의 수에 대한 페널티를 제외하고, 오로지 그린 선들의 퀄리티(유사도) 평균만으로 점수 산출
   let overall = validMatches ? (similaritySum / validMatches) * 100 : 0;
+
+  
 
   const denom = validMatches || 1;
   return {
