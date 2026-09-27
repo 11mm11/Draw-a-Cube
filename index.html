@@ -696,6 +696,22 @@ function generateProblem() {
 
   const visibleMissingEdges = missingEdges.filter(([a,b]) => isEdgeVisible(a,b));
 
+  // --- 추가된 로직: 주어진 면의 테두리(givenEdges)에 겹쳐서 가려지는 모서리 제외 ---  
+  const THRESHOLD = 10; // 테두리와 겹쳤다고 판단할 거리 (픽셀)
+  const isOverlapping = (a, b) => {
+    const p1 = projected[a], p2 = projected[b];
+    return givenEdges.some(([ga, gb]) => {
+      const gp1 = projected[ga], gp2 = projected[gb];
+      // 정답 선분의 양 끝점이 모두 기존 테두리 선분과 매우 가까우면 가려진 것으로 간주
+      return segmentDistance(p1, gp1, gp2) < THRESHOLD && 
+             segmentDistance(p2, gp1, gp2) < THRESHOLD;
+    });
+  };
+
+  const validMissingEdges = missingEdges.filter(([a, b]) => !isOverlapping(a, b));
+  const validVisibleMissingEdges = visibleMissingEdges.filter(([a, b]) => !isOverlapping(a, b));
+  // ---------------------------------------------------------------------------------
+
   return {
     transformed,
     projected,
@@ -1254,7 +1270,7 @@ function hungarian(matrix) {
   }
   return result;
 }
-
+/*
 function scoreDrawing() {
   const useVisibleOnly = document.getElementById("visibleModeToggle").checked;
   const targetLines = useVisibleOnly ? problem.targetLinesVisible : problem.targetLinesAll;
@@ -1283,6 +1299,43 @@ function scoreDrawing() {
 
   const extra = Math.max(0,userLines.length-targetLines.length);
   if (extra > 0) overall *= Math.max(0,1-0.05*extra);
+
+  const denom = validMatches || 1;
+  return {
+    overall: clamp(overall,0,100),
+    angle: clamp((angleSum/denom)*100,0,100),
+    position: clamp((posSum/denom)*100,0,100),
+    length: clamp((lengthSum/denom)*100,0,100),
+    matched: validMatches,
+    total: targetLines.length
+  };
+}
+*/
+function scoreDrawing() {
+  const useVisibleOnly = document.getElementById("visibleModeToggle").checked;
+  const targetLines = useVisibleOnly ? problem.targetLinesVisible : problem.targetLinesAll;
+  
+  const userLines = strokes.map(simplifyStroke).filter(Boolean);
+  if (!userLines.length) {
+    return { overall:0, angle:0, position:0, length:0, matched:0, total:targetLines.length };
+  }
+
+  const matrix = targetLines.map(target => userLines.map(user => 1-lineSimilarity(target,user).total));
+  const pairs = hungarian(matrix);
+
+  let angleSum = 0, posSum = 0, lengthSum = 0, similaritySum = 0, validMatches = 0;
+
+  for (const [ti,ui] of pairs) {
+    if (ti >= targetLines.length || ui >= userLines.length) continue;
+    const s = lineSimilarity(targetLines[ti],userLines[ui]);
+    if (s.total < 0.18) continue;
+
+    angleSum += s.angle; posSum += s.position; lengthSum += s.length;
+    similaritySum += s.total; validMatches++;
+  }
+
+  // 선의 수에 대한 페널티를 제외하고, 오로지 그린 선들의 퀄리티(유사도) 평균만으로 점수 산출
+  let overall = validMatches ? (similaritySum / validMatches) * 100 : 0;
 
   const denom = validMatches || 1;
   return {
